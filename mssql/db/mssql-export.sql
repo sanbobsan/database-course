@@ -1,94 +1,100 @@
 USE Front;
 
--- Шапки документов
-SELECT 
-  ID,
-  DocumentTypeID,
-  Period,
-  Amount,
-  PersonID
-FROM bm_JournalBarnetDocs
-ORDER BY ID;
-
--- Строки операций
-SELECT
-  ID,
-  DocumentID,
-  OperationID,
-  ProductID,
-  VendorID,
-  RangeID,
-  Count,
-  Amount
-FROM bm_StorageOperations
-ORDER BY ID;
-
 -- Продукты
-SELECT
-  id,
-  productid,
-  description,
-  CategoryID
-FROM product
-ORDER BY id;
+SELECT 'INSERT INTO dwh.dim_products (external_id, code, name, category_external_id, range_external_id) VALUES ('
+     + CAST(p.id AS VARCHAR(20)) + ', '
+     + ISNULL('''' + REPLACE(p.productid, '''', '''''') + '''', 'null') + ', '
+     + ISNULL('''' + REPLACE(p.description, '''', '''''') + '''', 'null') + ', '
+     + ISNULL(CAST(p.CategoryID AS VARCHAR(20)), 'null') + ', '
+     + ISNULL(CAST(s.BaseSizeID AS VARCHAR(20)), 'null')
+     + ');' AS sql
+FROM product p
+LEFT JOIN size s ON s.ID = p.SizeID
+ORDER BY p.id;
 
 -- Категории
-SELECT
-  id,
-  description 
-FROM category 
+SELECT 'INSERT INTO dwh.dim_categories (external_id, name, parent_external_id) VALUES ('
+     + CAST(id AS VARCHAR(20)) + ', '
+     + ISNULL('''' + REPLACE(description, '''', '''''') + '''', 'null') + ', '
+     + CASE WHEN ISNULL(ParentID, 0) = 0
+            THEN 'null'
+            ELSE CAST(ParentID AS VARCHAR(20)) END
+     + ');' AS sql
+FROM category
 ORDER BY id;
 
 -- Поставщики
-SELECT
-  id,
-  firstname,
-  clientgroup
+SELECT 'INSERT INTO dwh.dim_vendors (external_id, name, group_external_id) VALUES ('
+     + CAST(id AS VARCHAR(20)) + ', '
+     + ISNULL('''' + REPLACE(clientid, '''', '''''') + '''', 'null') + ', '
+     + ISNULL(CAST(clientgroup AS VARCHAR(20)), 'null')
+     + ');' AS sql
 FROM vendors
 ORDER BY id;
 
 -- Группы поставщиков
-SELECT
-  vendorgroupid,
-  description 
+SELECT 'INSERT INTO dwh.dim_vendors_group (external_id, name) VALUES ('
+     + CAST(vendorgroupid AS VARCHAR(20)) + ', '
+     + ISNULL('''' + REPLACE(description, '''', '''''') + '''', 'null')
+     + ');' AS sql
 FROM vendorgroup
 ORDER BY vendorgroupid;
 
 -- Сотрудники
-SELECT
-  personid,
-  lastname,
-  firstname,
-  securityaccess
-FROM personnel
-ORDER BY personid;
+SELECT 'INSERT INTO dwh.dim_employees (external_id, full_name, role_name) VALUES ('
+     + CAST(p.personid AS VARCHAR(20)) + ', '
+     + ISNULL('''' + REPLACE(LTRIM(RTRIM(
+           ISNULL(p.lastname + ' ', '')
+         + ISNULL(p.firstname + ' ', '')
+         + ISNULL(p.middlename, '')
+       )), '''', '''''') + '''', 'null') + ', '
+     + ISNULL('''' + REPLACE(s.description, '''', '''''') + '''', 'null')
+     + ');' AS sql
+FROM personnel p
+LEFT JOIN securityaccess s ON s.securityaccessid = p.securityaccess
+ORDER BY p.personid;
 
--- Журнал
-SELECT 
-  transnumber,
-  transtype,
-  receiptn,
-  dater,
-  CAST(NULLIF(id, '') AS INT) AS id,
-  description,
-  quantity,
-  amount,
-  loginid
-FROM journal
-ORDER BY transnumber;
+-- Группы единиц измерения
+SELECT 'INSERT INTO dwh.dim_ranges_group (external_id, name) VALUES ('
+     + CAST(ID AS VARCHAR(20)) + ', '
+     + ISNULL('''' + REPLACE(Description, '''', '''''') + '''', 'null')
+     + ');' AS sql
+FROM bm_classifierSizesGroup
+ORDER BY ID;
 
--- Роли
-SELECT 
-  securityaccessid,
-  description 
-FROM securityaccess 
-ORDER BY securityaccessid;
+-- Базовые единицы измерения
+SELECT 'INSERT INTO dwh.dim_ranges (external_id, group_external_id, short_name, name) VALUES ('
+     + CAST(ID AS VARCHAR(20)) + ', '
+     + ISNULL(CAST(GroupID AS VARCHAR(20)), 'null') + ', '
+     + ISNULL('''' + REPLACE(ShortName, '''', '''''') + '''', 'null') + ', '
+     + ISNULL('''' + REPLACE(Description, '''', '''''') + '''', 'null')
+     + ');' AS sql
+FROM bm_classifierSizes
+ORDER BY ID;
 
--- Единицы измерения
-SELECT
-  ID,
-  sizeid,
-  description,
-  portionrate
-FROM size
+-- Виды оплаты
+SELECT 'INSERT INTO dwh.dim_payment_types (external_id, name) VALUES ('
+     + CAST(paymenttypeid AS VARCHAR(20)) + ', '
+     + ISNULL('''' + REPLACE(description, '''', '''''') + '''', 'null')
+     + ');' AS sql
+FROM paymenttype
+ORDER BY paymenttypeid;
+
+-- Склады
+SELECT 'INSERT INTO dwh.dim_storages (external_id, name) VALUES ('
+     + CAST(id AS VARCHAR(20)) + ', '
+     + ISNULL('''' + REPLACE(description, '''', '''''') + '''', 'null')
+     + ');' AS sql
+FROM storages
+ORDER BY id;
+
+-- Причины списания
+SELECT 'INSERT INTO dwh.dim_reasons (external_id, name, parent_external_id) VALUES ('
+     + CAST(ID AS VARCHAR(20)) + ', '
+     + ISNULL('''' + REPLACE(Description, '''', '''''') + '''', 'null') + ', '
+     + CASE WHEN ISNULL(ParentID, 0) = 0
+            THEN 'null'
+            ELSE CAST(ParentID AS VARCHAR(20)) END
+     + ');' AS sql
+FROM bm_ReasonDebit
 ORDER BY ID;
