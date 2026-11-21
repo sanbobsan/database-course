@@ -1,259 +1,167 @@
 -- ============================================================================
--- СКРИПТ:
--- - src - зеркало Front (MSSQL -> Postgres) - STG (Staging)
--- - dwh - DWH (Data Warehouse)
+-- СКРИПТ: dwh - DWH (Data Warehouse)
 -- ============================================================================
-
-DO $$
-BEGIN
-    CREATE SCHEMA IF NOT EXISTS src;
-
-    DROP TABLE IF EXISTS src.bm_journalbarnetdocs CASCADE;
-    DROP TABLE IF EXISTS src.bm_storageoperations CASCADE;
-    DROP TABLE IF EXISTS src.product CASCADE;
-    DROP TABLE IF EXISTS src.category CASCADE;
-    DROP TABLE IF EXISTS src.vendors CASCADE;
-    DROP TABLE IF EXISTS src.vendorgroup CASCADE;
-    DROP TABLE IF EXISTS src.personnel CASCADE;
-    DROP TABLE IF EXISTS src.journal CASCADE;
-    DROP TABLE IF EXISTS src.securityaccess CASCADE;
-    DROP TABLE IF EXISTS src.size CASCADE;
-
-    DROP SEQUENCE IF EXISTS src.bm_journalbarnetdocs_seq CASCADE;
-    DROP SEQUENCE IF EXISTS src.bm_storageoperations_seq CASCADE;
-    DROP SEQUENCE IF EXISTS src.product_seq CASCADE;
-    DROP SEQUENCE IF EXISTS src.category_seq CASCADE;
-    DROP SEQUENCE IF EXISTS src.vendors_seq CASCADE;
-    DROP SEQUENCE IF EXISTS src.vendorgroup_seq CASCADE;
-    DROP SEQUENCE IF EXISTS src.personnel_seq CASCADE;
-    DROP SEQUENCE IF EXISTS src.journal_seq CASCADE;
-    DROP SEQUENCE IF EXISTS src.size_seq CASCADE;
-
-    CREATE SEQUENCE IF NOT EXISTS src.bm_journalbarnetdocs_seq;
-    CREATE TABLE src.bm_journalbarnetdocs (
-        id INT NOT NULL PRIMARY KEY DEFAULT nextval('src.bm_journalbarnetdocs_seq'),
-        documenttypeid INT,
-        period TIMESTAMP,
-        amount NUMERIC(18, 2),
-        personid INT,
-        date_add TIMESTAMP DEFAULT now()
-    );
-    ALTER SEQUENCE src.bm_journalbarnetdocs_seq OWNED BY src.bm_journalbarnetdocs.id;
-    COMMENT ON TABLE src.bm_journalbarnetdocs IS 'Шапки документов (bm_JournalBarnetDocs)';
-
-    CREATE SEQUENCE IF NOT EXISTS src.bm_storageoperations_seq;
-    CREATE TABLE src.bm_storageoperations (
-        id INT NOT NULL PRIMARY KEY DEFAULT nextval('src.bm_storageoperations_seq'),
-        documentid INT,
-        operationid INT,
-        productid INT,
-        vendorid INT,
-        rangeid INT,
-        count NUMERIC(18, 4),
-        amount NUMERIC(18, 2),
-        date_add TIMESTAMP DEFAULT now()
-    );
-    ALTER SEQUENCE src.bm_storageoperations_seq OWNED BY src.bm_storageoperations.id;
-    COMMENT ON TABLE src.bm_storageoperations IS 'Строки операций (bm_StorageOperations)';
-
-    CREATE SEQUENCE IF NOT EXISTS src.product_seq;
-    CREATE TABLE src.product (
-        id INT NOT NULL PRIMARY KEY DEFAULT nextval('src.product_seq'),
-        productid INT,
-        description VARCHAR(255),
-        categoryid INT,
-        date_add TIMESTAMP DEFAULT now()
-    );
-    ALTER SEQUENCE src.product_seq OWNED BY src.product.id;
-    COMMENT ON TABLE src.product IS 'Продукты (product)';
-
-    CREATE SEQUENCE IF NOT EXISTS src.category_seq;
-    CREATE TABLE src.category (
-        id INT NOT NULL PRIMARY KEY DEFAULT nextval('src.category_seq'),
-        description VARCHAR(255),
-        date_add TIMESTAMP DEFAULT now()
-    );
-    ALTER SEQUENCE src.category_seq OWNED BY src.category.id;
-    COMMENT ON TABLE src.category IS 'Категории (category)';
-
-    CREATE SEQUENCE IF NOT EXISTS src.vendors_seq;
-    CREATE TABLE src.vendors (
-        id INT NOT NULL PRIMARY KEY DEFAULT nextval('src.vendors_seq'),
-        firstname VARCHAR(255),
-        clientgroup INT,
-        date_add TIMESTAMP DEFAULT now()
-    );
-    ALTER SEQUENCE src.vendors_seq OWNED BY src.vendors.id;
-    COMMENT ON TABLE src.vendors IS 'Поставщики (vendors)';
-
-    CREATE SEQUENCE IF NOT EXISTS src.vendorgroup_seq;
-    CREATE TABLE src.vendorgroup (
-        vendorgroupid INT NOT NULL PRIMARY KEY DEFAULT nextval('src.vendorgroup_seq'),
-        description VARCHAR(255),
-        date_add TIMESTAMP DEFAULT now()
-    );
-    ALTER SEQUENCE src.vendorgroup_seq OWNED BY src.vendorgroup.vendorgroupid;
-    COMMENT ON TABLE src.vendorgroup IS 'Группы поставщиков (vendorgroup)';
-
-    CREATE SEQUENCE IF NOT EXISTS src.personnel_seq;
-    CREATE TABLE src.personnel (
-        personid INT NOT NULL PRIMARY KEY DEFAULT nextval('src.personnel_seq'),
-        lastname VARCHAR(255),
-        firstname VARCHAR(255),
-        securityaccess INT,
-        date_add TIMESTAMP DEFAULT now()
-    );
-    ALTER SEQUENCE src.personnel_seq OWNED BY src.personnel.personid;
-    COMMENT ON TABLE src.personnel IS 'Сотрудники (personnel)';
-
-    CREATE SEQUENCE IF NOT EXISTS src.journal_seq;
-    CREATE TABLE src.journal (
-        transnumber INT NOT NULL PRIMARY KEY DEFAULT nextval('src.journal_seq'),
-        transtype INT,
-        receiptn BIGINT,
-        dater TIMESTAMP,
-        id INT,
-        description VARCHAR(255),
-        quantity NUMERIC(18, 3),
-        amount NUMERIC(18, 2),
-        loginid INT,
-        date_add TIMESTAMP DEFAULT now()
-    );
-    ALTER SEQUENCE src.journal_seq OWNED BY src.journal.transnumber;
-    COMMENT ON TABLE src.journal IS 'Журнал транзакций (journal)';
-
-    CREATE TABLE src.securityaccess (
-        securityaccessid INT,
-        description VARCHAR(255),
-        date_add TIMESTAMP DEFAULT now()
-    );
-    COMMENT ON TABLE src.securityaccess IS 'Роли (securityaccess)';
-
-    CREATE SEQUENCE IF NOT EXISTS src.size_seq;
-    CREATE TABLE src.size (
-        id INT NOT NULL PRIMARY KEY DEFAULT nextval('src.size_seq'),
-        sizeid VARCHAR(50),
-        description VARCHAR(255),
-        portionrate NUMERIC(18, 3),
-        date_add TIMESTAMP DEFAULT now()
-    );
-    ALTER SEQUENCE src.size_seq OWNED BY src.size.id;
-    COMMENT ON TABLE src.size IS 'Единицы измерения (size)';
-
-END $$;
-
 
 DO $$
 BEGIN
     CREATE SCHEMA IF NOT EXISTS dwh;
 
-    DROP TABLE IF EXISTS dwh.fact_purchase CASCADE;
-    DROP TABLE IF EXISTS dwh.fact_sales CASCADE;
-    DROP TABLE IF EXISTS dwh.fact_personnel_activity CASCADE;
-    DROP TABLE IF EXISTS dwh.fact_inventory CASCADE;
+    -- Продукты
 
-    DROP TABLE IF EXISTS dwh.dim_product CASCADE;
-    DROP TABLE IF EXISTS dwh.dim_vendor CASCADE;
-    DROP TABLE IF EXISTS dwh.dim_personnel CASCADE;
-    DROP TABLE IF EXISTS dwh.dim_time CASCADE;
+    DROP TABLE IF EXISTS dwh.dim_products CASCADE;
+    DROP SEQUENCE IF EXISTS dwh.seq_dim_products CASCADE;
 
-    DROP SEQUENCE IF EXISTS dwh.dim_product_seq CASCADE;
-    DROP SEQUENCE IF EXISTS dwh.dim_vendor_seq CASCADE;
-    DROP SEQUENCE IF EXISTS dwh.dim_personnel_seq CASCADE;
-    DROP SEQUENCE IF EXISTS dwh.fact_purchase_seq CASCADE;
-    DROP SEQUENCE IF EXISTS dwh.fact_sales_seq CASCADE;
-
-    -- Измерения ------------------------------------------------------------
-
-    CREATE TABLE dwh.dim_time (
-        time_code INT NOT NULL PRIMARY KEY, -- вида 202611
-        month_start DATE NOT NULL,
-        month_end DATE NOT NULL,
-        month_name VARCHAR(20) NOT NULL,
-        year INT NOT NULL,
-        quarter_num INT NOT NULL,
-        quarter_name VARCHAR(20) NOT NULL
-    );
-    COMMENT ON TABLE dwh.dim_time IS 'Месяцы';
-
-    CREATE SEQUENCE IF NOT EXISTS dwh.dim_product_seq;
-    CREATE TABLE dwh.dim_product (
-        id INT NOT NULL PRIMARY KEY DEFAULT nextval('dwh.dim_product_seq'),
-        external_id INT NOT NULL UNIQUE, -- из src
-        article INT,
+    CREATE SEQUENCE dwh.seq_dim_products;
+    CREATE TABLE dwh.dim_products (
+        id BIGINT NOT NULL PRIMARY KEY DEFAULT nextval('dwh.seq_dim_products'),
+        external_id BIGINT NOT NULL UNIQUE,
+        code VARCHAR(16),
         name VARCHAR(255),
-        category_name VARCHAR(255)
+        category_external_id BIGINT,
+        range_external_id BIGINT,
+        date_add TIMESTAMP NOT NULL DEFAULT now()
     );
-    ALTER SEQUENCE dwh.dim_product_seq OWNED BY dwh.dim_product.id;
-    COMMENT ON TABLE dwh.dim_product IS 'Товары (product)';
+    ALTER SEQUENCE dwh.seq_dim_products OWNED BY dwh.dim_products.id;
+    COMMENT ON TABLE dwh.dim_products IS 'Товары (product); category_external_id, range_external_id — ID из Front';
 
-    CREATE SEQUENCE IF NOT EXISTS dwh.dim_vendor_seq;
-    CREATE TABLE dwh.dim_vendor (
-        id INT NOT NULL PRIMARY KEY DEFAULT nextval('dwh.dim_vendor_seq'),
-        external_id INT NOT NULL UNIQUE, -- из src
+    -- Категории
+
+    DROP TABLE IF EXISTS dwh.dim_categories CASCADE;
+    DROP SEQUENCE IF EXISTS dwh.seq_dim_categories CASCADE;
+
+    CREATE SEQUENCE dwh.seq_dim_categories;
+    CREATE TABLE dwh.dim_categories (
+        id BIGINT NOT NULL PRIMARY KEY DEFAULT nextval('dwh.seq_dim_categories'),
+        external_id BIGINT NOT NULL UNIQUE,
         name VARCHAR(255),
-        group_name VARCHAR(255)
+        parent_external_id BIGINT,
+        date_add TIMESTAMP NOT NULL DEFAULT now()
     );
-    ALTER SEQUENCE dwh.dim_vendor_seq OWNED BY dwh.dim_vendor.id;
-    COMMENT ON TABLE dwh.dim_vendor IS 'Поставщики (vendors)';
+    ALTER SEQUENCE dwh.seq_dim_categories OWNED BY dwh.dim_categories.id;
+    COMMENT ON TABLE dwh.dim_categories IS 'Категории товаров (category); parent_external_id — ID из Front';
 
-    CREATE SEQUENCE IF NOT EXISTS dwh.dim_personnel_seq;
-    CREATE TABLE dwh.dim_personnel (
-        id INT NOT NULL PRIMARY KEY DEFAULT nextval('dwh.dim_personnel_seq'),
-        external_id INT NOT NULL UNIQUE, -- из src
-        full_name TEXT,
-        role_name VARCHAR(255)
+    -- Поставщики
+
+    DROP TABLE IF EXISTS dwh.dim_vendors CASCADE;
+    DROP SEQUENCE IF EXISTS dwh.seq_dim_vendors CASCADE;
+
+    CREATE SEQUENCE dwh.seq_dim_vendors;
+    CREATE TABLE dwh.dim_vendors (
+        id BIGINT NOT NULL PRIMARY KEY DEFAULT nextval('dwh.seq_dim_vendors'),
+        external_id BIGINT NOT NULL UNIQUE,
+        name VARCHAR(100),
+        group_external_id BIGINT,
+        date_add TIMESTAMP NOT NULL DEFAULT now()
     );
-    ALTER SEQUENCE dwh.dim_personnel_seq OWNED BY dwh.dim_personnel.id;
-    COMMENT ON TABLE dwh.dim_personnel IS 'Сотрудники (personnel)';
+    ALTER SEQUENCE dwh.seq_dim_vendors OWNED BY dwh.dim_vendors.id;
+    COMMENT ON TABLE dwh.dim_vendors IS 'Поставщики (vendors); group_external_id — ID из Front';
 
-    -- Факты ----------------------------------------------------------------
+    -- Группы поставщиков
 
-    CREATE SEQUENCE IF NOT EXISTS dwh.fact_purchase_seq;
-    CREATE TABLE dwh.fact_purchase (
-        id INT NOT NULL PRIMARY KEY DEFAULT nextval('dwh.fact_purchase_seq'),
-        time_code INT NOT NULL REFERENCES dwh.dim_time(time_code),
-        product_id INT NOT NULL REFERENCES dwh.dim_product(id),
-        vendor_id INT NOT NULL REFERENCES dwh.dim_vendor(id),
-        document_id INT,
-        quantity NUMERIC(18, 4), -- количество
-        amount NUMERIC(18, 2) -- на сумму
+    DROP TABLE IF EXISTS dwh.dim_vendors_group CASCADE;
+    DROP SEQUENCE IF EXISTS dwh.seq_dim_vendors_group CASCADE;
+
+    CREATE SEQUENCE dwh.seq_dim_vendors_group;
+    CREATE TABLE dwh.dim_vendors_group (
+        id BIGINT NOT NULL PRIMARY KEY DEFAULT nextval('dwh.seq_dim_vendors_group'),
+        external_id BIGINT NOT NULL UNIQUE,
+        name VARCHAR(100),
+        date_add TIMESTAMP NOT NULL DEFAULT now()
     );
-    ALTER SEQUENCE dwh.fact_purchase_seq OWNED BY dwh.fact_purchase.id;
-    COMMENT ON TABLE dwh.fact_purchase IS 'Закупки';
+    ALTER SEQUENCE dwh.seq_dim_vendors_group OWNED BY dwh.dim_vendors_group.id;
+    COMMENT ON TABLE dwh.dim_vendors_group IS 'Группы поставщиков (vendorgroup)';
 
-    CREATE SEQUENCE IF NOT EXISTS dwh.fact_sales_seq;
-    CREATE TABLE dwh.fact_sales (
-        id INT NOT NULL PRIMARY KEY DEFAULT nextval('dwh.fact_sales_seq'),
-        time_code INT NOT NULL REFERENCES dwh.dim_time(time_code),
-        product_id INT NOT NULL REFERENCES dwh.dim_product(id),
-        personnel_id INT NOT NULL REFERENCES dwh.dim_personnel(id),
-        receipt_number BIGINT,
-        quantity NUMERIC(18, 3), -- количество
-        revenue NUMERIC(18, 2) -- на сумму
+    -- Сотрудники
+
+    DROP TABLE IF EXISTS dwh.dim_employees CASCADE;
+    DROP SEQUENCE IF EXISTS dwh.seq_dim_employees CASCADE;
+
+    CREATE SEQUENCE dwh.seq_dim_employees;
+    CREATE TABLE dwh.dim_employees (
+        id BIGINT NOT NULL PRIMARY KEY DEFAULT nextval('dwh.seq_dim_employees'),
+        external_id BIGINT NOT NULL UNIQUE,
+        full_name VARCHAR(150),
+        role_name VARCHAR(255),
+        date_add TIMESTAMP NOT NULL DEFAULT now()
     );
-    ALTER SEQUENCE dwh.fact_sales_seq OWNED BY dwh.fact_sales.id;
-    COMMENT ON TABLE dwh.fact_sales IS 'Продажи';
+    ALTER SEQUENCE dwh.seq_dim_employees OWNED BY dwh.dim_employees.id;
+    COMMENT ON TABLE dwh.dim_employees IS 'Сотрудники (personnel)';
 
-    CREATE TABLE dwh.fact_personnel_activity (
-        time_code INT NOT NULL REFERENCES dwh.dim_time(time_code),
-        personnel_id INT NOT NULL REFERENCES dwh.dim_personnel(id),
-        activity VARCHAR(255) NOT NULL, -- тип работы
-        operations_count INT NOT NULL DEFAULT 0, -- количество операций этого типа
-        amount NUMERIC(18, 2), -- на сумму
-        PRIMARY KEY (time_code, personnel_id, activity)
+    -- Группы единиц измерения
+
+    DROP TABLE IF EXISTS dwh.dim_ranges_group CASCADE;
+    DROP SEQUENCE IF EXISTS dwh.seq_dim_ranges_group CASCADE;
+
+    CREATE SEQUENCE dwh.seq_dim_ranges_group;
+    CREATE TABLE dwh.dim_ranges_group (
+        id BIGINT NOT NULL PRIMARY KEY DEFAULT nextval('dwh.seq_dim_ranges_group'),
+        external_id BIGINT NOT NULL UNIQUE,
+        name VARCHAR(255),
+        date_add TIMESTAMP NOT NULL DEFAULT now()
     );
-    COMMENT ON TABLE dwh.fact_personnel_activity IS 'Работа персонала';
+    ALTER SEQUENCE dwh.seq_dim_ranges_group OWNED BY dwh.dim_ranges_group.id;
+    COMMENT ON TABLE dwh.dim_ranges_group IS 'Группы единиц измерения (bm_classifierSizesGroup)';
 
-    CREATE TABLE dwh.fact_inventory (
-        time_code INT NOT NULL REFERENCES dwh.dim_time(time_code),
-        product_id INT NOT NULL REFERENCES dwh.dim_product(id),
-        unit_id INT NOT NULL,
-        unit_name VARCHAR(255),
-        quantity NUMERIC(18, 4), -- количество
-        amount NUMERIC(18, 2), -- на сумму
-        PRIMARY KEY (time_code, product_id, unit_id)
+    -- Базовые единицы измерения
+
+    DROP TABLE IF EXISTS dwh.dim_ranges CASCADE;
+    DROP SEQUENCE IF EXISTS dwh.seq_dim_ranges CASCADE;
+
+    CREATE SEQUENCE dwh.seq_dim_ranges;
+    CREATE TABLE dwh.dim_ranges (
+        id BIGINT NOT NULL PRIMARY KEY DEFAULT nextval('dwh.seq_dim_ranges'),
+        external_id BIGINT NOT NULL UNIQUE,
+        group_external_id BIGINT,
+        short_name VARCHAR(50),
+        name VARCHAR(255),
+        date_add TIMESTAMP NOT NULL DEFAULT now()
     );
-    COMMENT ON TABLE dwh.fact_inventory IS 'Остатки';
+    ALTER SEQUENCE dwh.seq_dim_ranges OWNED BY dwh.dim_ranges.id;
+    COMMENT ON TABLE dwh.dim_ranges IS 'Базовые единицы измерения (bm_classifierSizes); group_external_id — ID из Front';
 
+    -- Виды оплаты
+
+    DROP TABLE IF EXISTS dwh.dim_payment_types CASCADE;
+    DROP SEQUENCE IF EXISTS dwh.seq_dim_payment_types CASCADE;
+
+    CREATE SEQUENCE dwh.seq_dim_payment_types;
+    CREATE TABLE dwh.dim_payment_types (
+        id BIGINT NOT NULL PRIMARY KEY DEFAULT nextval('dwh.seq_dim_payment_types'),
+        external_id BIGINT NOT NULL UNIQUE,
+        name VARCHAR(30),
+        date_add TIMESTAMP NOT NULL DEFAULT now()
+    );
+    ALTER SEQUENCE dwh.seq_dim_payment_types OWNED BY dwh.dim_payment_types.id;
+    COMMENT ON TABLE dwh.dim_payment_types IS 'Виды оплаты (paymenttype)';
+
+    -- Склады
+
+    DROP TABLE IF EXISTS dwh.dim_storages CASCADE;
+    DROP SEQUENCE IF EXISTS dwh.seq_dim_storages CASCADE;
+
+    CREATE SEQUENCE dwh.seq_dim_storages;
+    CREATE TABLE dwh.dim_storages (
+        id BIGINT NOT NULL PRIMARY KEY DEFAULT nextval('dwh.seq_dim_storages'),
+        external_id BIGINT NOT NULL UNIQUE,
+        name VARCHAR(255),
+        date_add TIMESTAMP NOT NULL DEFAULT now()
+    );
+    ALTER SEQUENCE dwh.seq_dim_storages OWNED BY dwh.dim_storages.id;
+    COMMENT ON TABLE dwh.dim_storages IS 'Склады (storages)';
+
+    -- Причины списания
+
+    DROP TABLE IF EXISTS dwh.dim_reasons CASCADE;
+    DROP SEQUENCE IF EXISTS dwh.seq_dim_reasons CASCADE;
+
+    CREATE SEQUENCE dwh.seq_dim_reasons;
+    CREATE TABLE dwh.dim_reasons (
+        id BIGINT NOT NULL PRIMARY KEY DEFAULT nextval('dwh.seq_dim_reasons'),
+        external_id BIGINT NOT NULL UNIQUE,
+        name VARCHAR(255),
+        parent_external_id BIGINT,
+        date_add TIMESTAMP NOT NULL DEFAULT now()
+    );
+    ALTER SEQUENCE dwh.seq_dim_reasons OWNED BY dwh.dim_reasons.id;
+    COMMENT ON TABLE dwh.dim_reasons IS 'Причины списания (bm_ReasonDebit); parent_external_id — ID из Front';
 END $$;
